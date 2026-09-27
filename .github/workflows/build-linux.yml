@@ -1,0 +1,108 @@
+name: Build Linux packages
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: Frontend API base URL (use /api/ for the included Nginx setup)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Linux ${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dormcheck-fronted/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: dormcheck-sever/go.mod
+          cache-dependency-path: dormcheck-sever/go.sum
+
+      - name: Select frontend API base URL
+        id: api-base
+        env:
+          INPUT_API_BASE_URL: ${{ inputs.api_base_url }}
+          REPOSITORY_API_BASE_URL: ${{ vars.VITE_API_BASE }}
+        run: |
+          value="$INPUT_API_BASE_URL"
+          if [ -z "$value" ]; then value="$REPOSITORY_API_BASE_URL"; fi
+          if [ -z "$value" ]; then value="/api/"; fi
+          case "$value" in
+            *[[:space:]]*) echo "API base URL cannot contain whitespace" >&2; exit 1 ;;
+          esac
+          case "$value" in
+            /api/|http://*|https://*) ;;
+            *) echo "Use /api/ or an absolute HTTP(S) API URL" >&2; exit 1 ;;
+          esac
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+      - name: Build frontend
+        working-directory: dormcheck-fronted
+        env:
+          VITE_API_BASE: ${{ steps.api-base.outputs.value }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build backend and assemble package
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          package_dir="$RUNNER_TEMP/dormcheck-linux-$GOARCH"
+          mkdir -p "$package_dir/backend" "$package_dir/frontend"
+          CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" go -C dormcheck-sever build -trimpath -ldflags='-s -w' -o "$package_dir/backend/dormcheck" .
+          cp -a dormcheck-fronted/dist "$package_dir/frontend/"
+          cp dormcheck-sever/.env.example "$package_dir/backend/.env.example"
+          cp deploy/linux/README.md "$package_dir/README.md"
+          cp LICENSE "$package_dir/LICENSE"
+          printf '%s\n' "$GITHUB_SHA" > "$package_dir/BUILD_COMMIT"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/dormcheck-linux-$GOARCH.tar.gz" "dormcheck-linux-$GOARCH"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dormcheck-linux-${{ matrix.goarch }}
+          path: ${{ runner.temp }}/dormcheck-linux-${{ matrix.goarch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Attach packages to GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dormcheck-linux-*
+          path: release-files
+          merge-multiple: true
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-files/*.tar.gz
