@@ -1,0 +1,5 @@
+./admin.go
+./app_config.go
+./auth.go
+./student.go
+./updates.go
