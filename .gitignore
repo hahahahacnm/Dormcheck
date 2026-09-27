@@ -43,3 +43,6 @@ yarn-error.log*
 *.swp
 .DS_Store
 Thumbs.db
+
+# Local copies of the former standalone repository metadata
+**/.git-preserved/

@@ -1,8 +1,0 @@
-./captcha_ai.go
-./code.go
-./cookie.go
-./encrypt_rsa.go
-./hash.go
-./jwt.go
-./mail.go
-./response.go

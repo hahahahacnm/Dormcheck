@@ -1,3 +1,0 @@
-./admin_auth.go
-./jwt_auth.go
-./super_admin_auth.go

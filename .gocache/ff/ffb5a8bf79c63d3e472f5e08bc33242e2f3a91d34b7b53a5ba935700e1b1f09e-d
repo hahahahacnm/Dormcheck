@@ -1,8 +1,0 @@
-./access.go
-./activity.go
-./admin_tasks.go
-./login.go
-./submit.go
-./task.go
-./task_window.go
-./unbindcheck.go
