@@ -46,3 +46,4 @@ Thumbs.db
 
 # Local copies of the former standalone repository metadata
 **/.git-preserved/
+*.zip

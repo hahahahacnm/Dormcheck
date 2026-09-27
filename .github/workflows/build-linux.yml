@@ -69,7 +69,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           set -euo pipefail
-          package_dir="$RUNNER_TEMP/dormcheck-linux-$GOARCH"
+          output_root="$RUNNER_TEMP/dormcheck-build"
+          package_dir="$output_root/auto/dormcheck-linux-$GOARCH"
           mkdir -p "$package_dir/backend" "$package_dir/frontend"
           CGO_ENABLED=0 GOOS=linux GOARCH="$GOARCH" go -C dormcheck-sever build -trimpath -ldflags='-s -w' -o "$package_dir/backend/dormcheck" .
           cp -a dormcheck-fronted/dist "$package_dir/frontend/"
@@ -77,13 +78,13 @@ jobs:
           cp deploy/linux/README.md "$package_dir/README.md"
           cp LICENSE "$package_dir/LICENSE"
           printf '%s\n' "$GITHUB_SHA" > "$package_dir/BUILD_COMMIT"
-          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/dormcheck-linux-$GOARCH.tar.gz" "dormcheck-linux-$GOARCH"
+          tar -C "$output_root/auto" -czf "$output_root/auto/dormcheck-linux-$GOARCH.tar.gz" "dormcheck-linux-$GOARCH"
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
         with:
           name: dormcheck-linux-${{ matrix.goarch }}
-          path: ${{ runner.temp }}/dormcheck-linux-${{ matrix.goarch }}.tar.gz
+          path: ${{ runner.temp }}/dormcheck-build/**
           if-no-files-found: error
           retention-days: 30
 
@@ -105,4 +106,4 @@ jobs:
       - name: Publish release assets
         uses: softprops/action-gh-release@v3
         with:
-          files: release-files/*.tar.gz
+          files: release-files/auto/*.tar.gz
