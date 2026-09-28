@@ -133,7 +133,7 @@ func SendAccountErrorEmail(to, stuName, stuId, errorMsg string, sendTime time.Ti
 		<p>学号：<strong>%s</strong></p>
 		<p style="color: red;"><strong>❌ 登录状态刷新失败</strong></p>
 		<p>失败原因：%s</p>
-		<p>请检查您的微学工账号密码是否已在 DormCheck 平台正确录入，并及时修改。连续登录失败期间每天最多提醒一次；满 7 天后停止邮件提醒并锁定该学生的自动任务。</p>
+		<p>请检查您的微学工账号密码是否已在 DormCheck 平台正确录入，并及时修改。认证失败每天最多提醒一次，在重新验证成功前最多发送三次；连续三个日期认证失败后停止刷新 Cookie、锁定全部任务并停止提醒，手动执行及恢复均需先重新验证成功。</p>
 		<p>如您无法解决问题，请加QQ群咨询：<strong>947767423</strong>。</p>
 		<p>检测时间：%s</p>
 		<p>感谢您使用 DormCheck 自动化托管平台。</p>
@@ -165,7 +165,7 @@ func SendActivityRecoveryEmail(to, stuName, stuID, activityID, activityName stri
 }
 
 func SendAccountTasksPausedEmail(to, stuName, stuID string, sendTime time.Time) error {
-	body := fmt.Sprintf(`<p>您好，学生 <strong>%s</strong>（学号：%s）的微学工登录状态已连续失效 7 天，关联托管任务已锁定。</p><p>请在学生绑定页面更新密码并重新验证，验证通过后此前由系统锁定且活动正常的任务会自动恢复。</p><p>检测时间：%s</p>`, html.EscapeString(stuName), html.EscapeString(stuID), sendTime.Format("2006-01-02 15:04:05"))
+	body := fmt.Sprintf(`<p>您好，学生 <strong>%s</strong>（学号：%s）的微学工账号已连续三天认证失败，关联托管任务已锁定。</p><p>请在学生绑定页面更新密码并重新验证，验证通过后此前由系统锁定且活动正常的任务会自动恢复。</p><p>检测时间：%s</p>`, html.EscapeString(stuName), html.EscapeString(stuID), sendTime.Format("2006-01-02 15:04:05"))
 	return SendMail(to, "托管任务锁定提醒", body, "", "")
 }
 

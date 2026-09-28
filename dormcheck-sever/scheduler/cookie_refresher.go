@@ -32,7 +32,7 @@ func refreshStudentCookies() {
 	var students []database.Student
 	now := time.Now()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	if err := database.DB.Where("stu_id IN (SELECT stu_id FROM user_students) AND last_login < ?", dayStart).Find(&students).Error; err != nil {
+	if err := database.DB.Where("stu_id IN (SELECT stu_id FROM user_students) AND auth_status <> 'locked' AND last_login < ? AND (auth_last_failure_at IS NULL OR auth_last_failure_at < ?)", dayStart, dayStart).Find(&students).Error; err != nil {
 		log.Printf("❌ 查询学生失败: %v", err)
 		return
 	}
@@ -71,6 +71,14 @@ func refreshStudentCookies() {
 }
 
 func refreshOneStudent(stu database.Student) {
+	var current database.Student
+	if err := database.DB.First(&current, "stu_id = ?", stu.StuID).Error; err != nil {
+		return
+	}
+	if current.AuthStatus == "locked" || current.LastLogin.After(stu.LastLogin) {
+		return
+	}
+	stu = current
 	cookies, err := student.LoginWithoutBind(stu.StuID, stu.Password)
 
 	// ===== 登录失败或 cookies 为空 =====
@@ -85,7 +93,7 @@ func refreshOneStudent(stu database.Student) {
 		if isStudentCredentialFailure(failureMessage) {
 			shouldNotify, locked := recordStudentCredentialFailure(stu, failureMessage)
 			if locked {
-				lockTasksForInvalidStudent(stu.StuID)
+				failureMessage += "；连续三天认证失败，已停止自动刷新并锁定全部任务。请更新密码并重新验证绑定，验证通过后才可恢复。"
 			}
 			if shouldNotify {
 				sendStudentCredentialFailureNotice(stu, failureMessage)
@@ -103,10 +111,11 @@ func refreshOneStudent(stu database.Student) {
 	stu.AuthError = ""
 	stu.AuthNoticeSentAt = nil
 	result := database.DB.Model(&database.Student{}).
-		Where("stu_id = ? AND last_login <= ?", stu.StuID, stu.LastLogin).
+		Where("stu_id = ? AND last_login <= ? AND auth_status <> ?", stu.StuID, stu.LastLogin, "locked").
 		Updates(map[string]interface{}{
 			"cookies": stu.Cookies, "last_login": time.Now(), "auth_status": "valid",
 			"auth_failed_at": nil, "auth_error": "", "auth_notice_sent_at": nil,
+			"auth_failure_days": 0, "auth_last_failure_at": nil, "auth_notice_count": 0,
 		})
 	if result.Error != nil {
 		log.Printf("❌ 保存失败: 学号=%s, 错误=%v", stu.StuID, result.Error)
@@ -133,9 +142,8 @@ func isStudentCredentialFailure(message string) bool {
 	return false
 }
 
-// Record a credential failure once per student. Authentication mail is capped
-// at once per local calendar day and stops when the continuous failure reaches
-// seven days. The row lock makes duplicate refresh workers idempotent.
+// Only distinct consecutive calendar days with confirmed credential failures count.
+// Lock the student row to serialize failures with successful re-binding.
 func recordStudentCredentialFailure(stu database.Student, failureMessage string) (shouldNotify, locked bool) {
 	now := time.Now()
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
@@ -143,40 +151,54 @@ func recordStudentCredentialFailure(stu database.Student, failureMessage string)
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, "stu_id = ?", stu.StuID).Error; err != nil {
 			return err
 		}
-		// Ignore an old refresh result if the user has since reverified.
-		if current.LastLogin.After(stu.LastLogin) {
+		if current.LastLogin.After(stu.LastLogin) || current.AuthStatus == "locked" {
 			return nil
 		}
-		failedAt := current.AuthFailedAt
-		if current.AuthStatus != "invalid" && current.AuthStatus != "locked" || failedAt == nil {
-			failedAt = &now
-			current.AuthFailedAt = failedAt
+		days, freshDay := credentialFailureDays(now, current.AuthLastFailureAt, current.AuthFailureDays)
+		if days == 1 && freshDay {
+			current.AuthFailedAt = &now
 		}
+		current.AuthFailureDays = days
+		current.AuthLastFailureAt = &now
 		current.AuthError = failureMessage
-		shouldNotify, locked = credentialFailurePolicy(now, *failedAt, current.AuthNoticeSentAt)
+		locked = days >= 3
+		shouldNotify = freshDay && current.AuthNoticeCount < 3 &&
+			(current.AuthNoticeSentAt == nil || current.AuthNoticeSentAt.In(now.Location()).Format("2006-01-02") != now.Format("2006-01-02"))
+		if shouldNotify {
+			current.AuthNoticeSentAt = &now
+			current.AuthNoticeCount++
+		}
+		current.AuthStatus = "invalid"
 		if locked {
 			current.AuthStatus = "locked"
-		} else {
-			current.AuthStatus = "invalid"
-			if shouldNotify {
-				current.AuthNoticeSentAt = &now
-			}
 		}
-		return tx.Save(&current).Error
+		if err := tx.Save(&current).Error; err != nil {
+			return err
+		}
+		if locked {
+			return tx.Model(&database.Task{}).Where("stu_id = ? AND enabled = TRUE", stu.StuID).
+				Updates(map[string]interface{}{"enabled": false, "auth_auto_paused": true}).Error
+		}
+		return nil
 	})
 	if err != nil {
-		log.Printf("保存学生账号失效状态失败: 学号=%s，错误=%v", stu.StuID, err)
+		log.Printf("保存学生账号异常状态失败: %s: %v", stu.StuID, err)
 		return false, false
 	}
 	return shouldNotify, locked
 }
 
-func credentialFailurePolicy(now, failedAt time.Time, lastNotice *time.Time) (notify, lock bool) {
-	if now.Sub(failedAt) >= 7*24*time.Hour {
-		return false, true
+func credentialFailureDays(now time.Time, previous *time.Time, days int) (int, bool) {
+	if previous != nil {
+		last := previous.In(now.Location()).Format("2006-01-02")
+		if last == now.Format("2006-01-02") {
+			return days, false
+		}
+		if last == now.AddDate(0, 0, -1).Format("2006-01-02") && days > 0 {
+			return days + 1, true
+		}
 	}
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	return lastNotice == nil || lastNotice.Before(dayStart), false
+	return 1, true
 }
 
 func sendStudentCredentialFailureNotice(stu database.Student, failureMessage string) {
@@ -204,7 +226,7 @@ func sendStudentCredentialFailureNotice(stu database.Student, failureMessage str
 	}
 }
 
-// Lock tasks only after a continuous seven-day credential failure.
+// Reconcile tasks belonging to locked student accounts.
 func StartInvalidAccountTaskDisabler() {
 	go func() {
 		disableExpiredInvalidAccountTasks()
@@ -217,31 +239,21 @@ func StartInvalidAccountTaskDisabler() {
 }
 
 func disableExpiredInvalidAccountTasks() {
-	cutoff := time.Now().Add(-7 * 24 * time.Hour)
+	// Reconcile locked accounts without elapsed-time locking or login requests.
 	var students []database.Student
-	if err := database.DB.Where("auth_status = ? AND auth_failed_at IS NOT NULL AND auth_failed_at <= ?", "invalid", cutoff).Find(&students).Error; err != nil {
-		log.Printf("查询超期失效账号失败: %v", err)
+	if err := database.DB.Where("auth_status = ? AND EXISTS (SELECT 1 FROM tasks t WHERE t.stu_id = students.stu_id AND t.enabled = TRUE)", "locked").Find(&students).Error; err != nil {
+		log.Printf("查询锁定账号失败: %v", err)
 		return
 	}
 	for _, stu := range students {
-		result := database.DB.Model(&database.Student{}).
-			Where("stu_id = ? AND auth_status = ? AND auth_failed_at <= ?", stu.StuID, "invalid", cutoff).
-			Update("auth_status", "locked")
-		if result.Error != nil {
-			log.Printf("锁定连续失效学生账号失败: %s: %v", stu.StuID, result.Error)
-			continue
-		}
-		if result.RowsAffected == 0 {
-			continue
-		}
 		lockTasksForInvalidStudent(stu.StuID)
 	}
 }
 
 func restoreTasksAfterStudentReverification(stuID string) {
 	result := database.DB.Model(&database.Task{}).
-		Where("stu_id = ? AND auth_auto_paused = TRUE AND activity_state = ?", stuID, "normal").
-		Updates(map[string]interface{}{"enabled": true, "auth_auto_paused": false})
+		Where("stu_id = ? AND (auth_auto_paused = TRUE OR activity_auto_paused = TRUE) AND activity_state = ? AND EXISTS (SELECT 1 FROM students s WHERE s.stu_id = tasks.stu_id AND s.auth_status = 'valid')", stuID, "normal").
+		Updates(map[string]interface{}{"enabled": true, "auth_auto_paused": false, "activity_auto_paused": false})
 	if result.Error != nil {
 		log.Printf("学生重新验证后恢复任务失败: %s: %v", stuID, result.Error)
 	} else if result.RowsAffected > 0 {
@@ -250,14 +262,18 @@ func restoreTasksAfterStudentReverification(stuID string) {
 }
 
 func lockTasksForInvalidStudent(stuID string) {
-	result := database.DB.Model(&database.Task{}).
-		Where("stu_id = ? AND enabled = TRUE", stuID).
-		Updates(map[string]interface{}{"enabled": false, "auth_auto_paused": true})
-	if result.Error != nil {
-		log.Printf("锁定失效学生任务失败: %s: %v", stuID, result.Error)
-		return
-	}
-	if result.RowsAffected > 0 {
-		log.Printf("已锁定学号 %s 的 %d 个任务", stuID, result.RowsAffected)
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		var account database.Student
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&account, "stu_id = ?", stuID).Error; err != nil {
+			return err
+		}
+		if account.AuthStatus != "locked" {
+			return nil
+		}
+		return tx.Model(&database.Task{}).Where("stu_id = ? AND enabled = TRUE", stuID).
+			Updates(map[string]interface{}{"enabled": false, "auth_auto_paused": true}).Error
+	})
+	if err != nil {
+		log.Printf("锁定学生任务失败: %s: %v", stuID, err)
 	}
 }

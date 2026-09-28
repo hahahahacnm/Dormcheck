@@ -69,15 +69,18 @@ type UserStudent struct { // 用户绑定学生
 }
 
 type Student struct { // 存储学生信息（学号、密码、cookies等）
-	StuID            string     `gorm:"primaryKey"`
-	Password         string     `gorm:"not null"`
-	Cookies          string     `gorm:"type:text"` // 存储序列化后的 cookies
-	LastLogin        time.Time  `gorm:"not null"`
-	Name             string     `gorm:""`
-	AuthStatus       string     `gorm:"size:16;not null;default:valid"`
-	AuthFailedAt     *time.Time `gorm:"index"`
-	AuthError        string     `gorm:"type:text"`
-	AuthNoticeSentAt *time.Time
+	StuID             string     `gorm:"primaryKey"`
+	Password          string     `gorm:"not null"`
+	Cookies           string     `gorm:"type:text"` // 存储序列化后的 cookies
+	LastLogin         time.Time  `gorm:"not null"`
+	Name              string     `gorm:""`
+	AuthStatus        string     `gorm:"size:16;not null;default:valid"`
+	AuthFailedAt      *time.Time `gorm:"index"`
+	AuthError         string     `gorm:"type:text"`
+	AuthNoticeSentAt  *time.Time
+	AuthFailureDays   int `gorm:"not null;default:0"`
+	AuthLastFailureAt *time.Time
+	AuthNoticeCount   int `gorm:"not null;default:0"`
 }
 
 type Task struct {

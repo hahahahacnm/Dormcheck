@@ -10,6 +10,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var activityAuditMu sync.Mutex
@@ -298,15 +301,28 @@ func syncNormalActivity(task database.Task, activity schoolActivity) (bool, erro
 		"activity_issue":      "",
 		"activity_checked_at": now,
 	}
-	if task.ActivityState != "normal" {
-		if task.ActivityAutoPaused && !task.ActivityOverride && student.EnsureStudentCanEnableTasks(task.StuID) == nil {
-			updates["enabled"] = true
+	var restored bool
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		var account database.Student
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&account, "stu_id = ?", task.StuID).Error; err != nil {
+			return err
 		}
-		updates["activity_auto_paused"] = false
-		updates["activity_override"] = false
-	}
-	result := database.DB.Model(&database.Task{}).Where("id = ?", task.ID).Updates(updates)
-	return updates["enabled"] == true && result.RowsAffected > 0, result.Error
+		var current database.Task
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, task.ID).Error; err != nil {
+			return err
+		}
+		if (current.ActivityAutoPaused || current.AuthAutoPaused) && !current.ActivityOverride && account.AuthStatus != "locked" && student.EnsureStudentCanEnableTasks(task.StuID) == nil {
+			updates["enabled"] = true
+			updates["activity_auto_paused"] = false
+			updates["auth_auto_paused"] = false
+			restored = true
+		}
+		if current.ActivityState != "normal" {
+			updates["activity_override"] = false
+		}
+		return tx.Model(&database.Task{}).Where("id = ?", task.ID).Updates(updates).Error
+	})
+	return restored && err == nil, err
 }
 
 func syncActivityDetails(task *database.Task, activity schoolActivity) error {

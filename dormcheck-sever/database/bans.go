@@ -88,6 +88,19 @@ func AttachActiveStudentBans(tasks []Task, now time.Time) error {
 			tasks[i].ExecutionBlockedReason = "该学生当前没有绑定用户，任务已暂停执行。恢复有效绑定后可继续运行。"
 		}
 	}
+	var locked []Student
+	if err := DB.Select("stu_id", "auth_error").Where("stu_id IN ? AND auth_status = ?", stuIDs, "locked").Find(&locked).Error; err != nil {
+		return err
+	}
+	lockedReasons := make(map[string]string, len(locked))
+	for _, account := range locked {
+		lockedReasons[account.StuID] = account.AuthError
+	}
+	for i := range tasks {
+		if reason, exists := lockedReasons[tasks[i].StuID]; exists && !tasks[i].StudentBanned {
+			tasks[i].ExecutionBlockedReason = "学生账号异常已锁定，自动及手动执行均已停止；请更新密码并重新验证绑定。原因：" + reason
+		}
+	}
 	return nil
 }
 

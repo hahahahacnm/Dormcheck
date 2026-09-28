@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, CircleHelp, Coffee, ExternalLink, Github, Mail, ScrollText, Users } from 'lucide-vue-next'
+import { BookOpen, CircleHelp, Coffee, ExternalLink, Github, MessageCircle, ScrollText, Users } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 </script>
 
@@ -29,8 +29,8 @@ import { RouterLink } from 'vue-router'
       <p class="mt-3 text-sm leading-7 text-slate-600">普通用户可以使用基础功能；赞助用于支付服务器、地图和消息服务费用。</p>
       <div class="mt-5 flex flex-wrap gap-3">
         <a href="https://afdian.com/a/kiki_666" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"><Coffee :size="17" />支持项目</a>
-        <a href="https://github.com/hahahahacnm" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><Github :size="17" />查看开源项目</a>
-        <a href="mailto:2219911811@qq.com" class="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><Mail :size="17" />联系作者</a>
+        <a href="https://github.com/hahahahacnm/Dormcheck" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><Github :size="17" />查看开源代码</a>
+        <a href="https://qm.qq.com/q/yuMx0hhYVU" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50"><MessageCircle :size="17" />联系我们</a>
       </div>
       <details class="mt-5 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
         <summary class="cursor-pointer text-sm font-semibold text-blue-800">查看赞赏码</summary>

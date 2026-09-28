@@ -73,7 +73,7 @@ func executeSignTaskLocked(task *database.Task, manual bool) error {
 		return err
 	}
 	if account.AuthStatus == "locked" {
-		return errors.New("学生账号连续登录失败已达 7 天，任务已锁定；请重新验证学生账号")
+		return errors.New("学生账号连续三天认证失败，任务已锁定；请更新密码并重新验证绑定")
 	}
 	if !manual {
 		if !task.Enabled || (task.ActivityState != "" && task.ActivityState != "normal" && !task.ActivityOverride) ||

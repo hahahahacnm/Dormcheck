@@ -31,7 +31,7 @@
                   <td class="px-5 py-3"><p class="truncate font-semibold text-slate-900" :title="stu.name">{{ stu.name || '未命名学生' }}</p><p class="mt-0.5 text-[11px] text-slate-500">{{ stu.stuId }}</p></td>
                   <td class="px-4 py-3"><span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold" :class="stu.studentBanned || stu.accountStatus === 'locked' ? 'bg-rose-100 text-rose-800' : stu.accountStatus === 'invalid' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-700'">{{ studentStatus(stu) }}</span></td>
                   <td class="px-4 py-3"><div class="flex min-w-0 items-center gap-2"><span v-if="stu.cachedPassword !== undefined" class="min-w-0 truncate font-mono text-xs text-slate-700" :title="stu.showPassword ? stu.cachedPassword : ''">{{ stu.showPassword ? stu.cachedPassword : '••••••••' }}</span><button v-if="stu.cachedPassword !== undefined" type="button" class="shrink-0 text-xs font-medium text-blue-700" @click="togglePassword(stu)">{{ stu.showPassword ? '隐藏' : '显示' }}</button><button v-else type="button" class="text-xs font-medium text-blue-700" @click="fetchPassword(stu)">查看密码</button></div></td>
-                  <td class="px-4 py-3"><p v-if="stu.studentBanned" class="truncate text-xs text-rose-700" :title="stu.studentBanReason">封禁：{{ stu.studentBanReason || '未填写原因' }} · {{ studentBanExpiry(stu) }}</p><p v-else-if="stu.accountStatus === 'invalid' || stu.accountStatus === 'locked'" class="truncate text-xs text-amber-800" :title="stu.authError || accountGraceMessage(stu)">{{ stu.authError || accountGraceMessage(stu) }}</p><span v-else class="text-xs text-slate-400">账号正常</span></td>
+                  <td class="px-4 py-3"><p v-if="stu.studentBanned" class="truncate text-xs text-rose-700" :title="stu.studentBanReason">封禁：{{ stu.studentBanReason || '未填写原因' }} · {{ studentBanExpiry(stu) }}</p><p v-else-if="stu.accountStatus === 'invalid' || stu.accountStatus === 'locked'" class="truncate text-xs text-amber-800" :title="accountStateDescription(stu)">{{ accountStateDescription(stu) }}</p><span v-else class="text-xs text-slate-400">账号正常</span></td>
                   <td class="px-4 py-3"><div class="flex justify-end gap-2"><button type="button" :disabled="stu.studentBanned" :title="stu.studentBanned ? '解除封禁后才能更新学生账号' : ''" class="whitespace-nowrap rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50" @click="openBindDialog(stu.stuId)">{{ stu.accountStatus === 'valid' ? '更新密码' : '更新并验证' }}</button><button type="button" class="whitespace-nowrap rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50" @click="unbindStudent(stu.stuId)">解绑</button></div></td>
                 </tr>
               </tbody>
@@ -45,7 +45,7 @@
               </div>
               <div class="flex min-w-0 items-center gap-2 text-xs"><span class="shrink-0 text-slate-500">密码</span><span v-if="stu.cachedPassword !== undefined" class="min-w-0 truncate font-mono text-slate-700">{{ stu.showPassword ? stu.cachedPassword : '••••••••' }}</span><button v-if="stu.cachedPassword !== undefined" type="button" class="shrink-0 text-blue-700" @click="togglePassword(stu)">{{ stu.showPassword ? '隐藏' : '显示' }}</button><button v-else type="button" class="text-blue-700" @click="fetchPassword(stu)">查看</button></div>
               <p v-if="stu.studentBanned" class="line-clamp-2 text-[11px] leading-4 text-rose-700">封禁原因：{{ stu.studentBanReason || '管理员未填写原因' }} · {{ studentBanExpiry(stu) }}</p>
-              <p v-else-if="stu.accountStatus === 'invalid' || stu.accountStatus === 'locked'" class="line-clamp-2 text-[11px] leading-4 text-amber-800">{{ stu.authError || accountGraceMessage(stu) }}</p>
+              <p v-else-if="stu.accountStatus === 'invalid' || stu.accountStatus === 'locked'" class="line-clamp-2 text-[11px] leading-4 text-amber-800">{{ accountStateDescription(stu) }}</p>
             </li>
           </ul>
         </div>
@@ -76,6 +76,7 @@ interface BoundStudent {
   name: string
   accountStatus?: 'valid' | 'invalid' | 'locked'
   authFailedAt?: string | null
+  authFailureDays?: number
   authError?: string
   studentBanned?: boolean
   studentBanReason?: string
@@ -117,8 +118,8 @@ function togglePassword(stu: BoundStudent) { stu.showPassword = !stu.showPasswor
 
 function studentStatus(stu: BoundStudent) {
   if (stu.studentBanned) return '学生已封禁'
-  if (stu.accountStatus === 'locked') return '任务已锁定'
-  if (stu.accountStatus === 'invalid') return '登录失效'
+  if (stu.accountStatus === 'locked') return '账号异常 · 已锁定'
+  if (stu.accountStatus === 'invalid') return '账号异常'
   return '已绑定'
 }
 
@@ -146,11 +147,10 @@ function openBindDialog(stuId?: string) {
   router.push(stuId ? `/student-bind/${encodeURIComponent(stuId)}/edit` : '/student-bind/add')
 }
 
-function accountGraceMessage(stu: BoundStudent) {
-  if (stu.accountStatus === 'locked') return '连续 7 天登录失败，关联任务已锁定；重新验证成功后，系统会恢复此前由系统锁定且活动正常的任务。'
-  if (!stu.authFailedAt) return '连续登录失败满 7 天后，系统会停止邮件提醒并锁定关联任务。'
-  const lockAt = new Date(new Date(stu.authFailedAt).getTime() + 7 * 24 * 60 * 60 * 1000)
-  return `旧 Cookie 在锁定前仍可尝试执行。连续失败满 7 天（${lockAt.toLocaleString()}）后停止邮件提醒并锁定任务。`
+function accountStateDescription(stu: BoundStudent) {
+  const reason = stu.authError ? `${stu.authError}。` : ''
+  if (stu.accountStatus === 'locked') return `${reason}已停止刷新与全部任务执行；请更新密码并重新验证绑定，验证成功后解锁。`
+  return `${reason}连续认证失败 ${stu.authFailureDays || 1}/3 天；第三天锁定任务。请及时更新密码并验证。`
 }
 
 watch(isLoggedIn, (val) => {

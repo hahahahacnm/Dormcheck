@@ -32,6 +32,9 @@ func SaveTask(userID int, task *database.Task) error {
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&studentRecord, "stu_id = ?", task.StuID).Error; err != nil {
 			return err
 		}
+		if studentRecord.AuthStatus == "locked" {
+			return errors.New("学生账号已锁定，请更新密码并重新验证绑定")
+		}
 		if ban, err := database.GetActiveStudentBan(tx, task.StuID, time.Now()); err == nil {
 			return errors.New(database.StudentBanMessage(*ban))
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {

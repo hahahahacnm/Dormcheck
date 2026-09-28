@@ -86,6 +86,7 @@ func GetPendingTasks() ([]database.Task, error) {
 		Table("tasks AS t").Select("t.*").
 		Where(`
 			t.enabled = ? AND
+			EXISTS (SELECT 1 FROM students s WHERE s.stu_id = t.stu_id AND s.auth_status <> 'locked') AND
 			t.running_at IS NULL AND
 			(t.activity_state IN ('', 'normal') OR t.activity_override = TRUE) AND
 			NOT EXISTS (SELECT 1 FROM student_bans sb WHERE sb.stu_id = t.stu_id AND (sb.expires_at IS NULL OR sb.expires_at > ?)) AND

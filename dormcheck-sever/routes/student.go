@@ -537,7 +537,7 @@ func RegisterStudentRoutes(app *fiber.App) {
 
 		task.Enabled = data.Enabled
 		result := database.DB.Model(&database.Task{}).
-			Where("id = ? AND running_at IS NULL AND stu_id IN (SELECT stu_id FROM user_students WHERE user_id = ?)", task.ID, userID).
+			Where("id = ? AND running_at IS NULL AND stu_id IN (SELECT stu_id FROM user_students WHERE user_id = ?) AND (? = FALSE OR EXISTS (SELECT 1 FROM students s WHERE s.stu_id = tasks.stu_id AND s.auth_status <> 'locked'))", task.ID, userID, data.Enabled).
 			Updates(map[string]interface{}{"enabled": task.Enabled, "activity_auto_paused": task.ActivityAutoPaused, "activity_override": task.ActivityOverride, "auth_auto_paused": task.AuthAutoPaused})
 		if result.Error != nil {
 			return utils.RespondJSON(c, 500, false, "更新失败: "+result.Error.Error(), nil)

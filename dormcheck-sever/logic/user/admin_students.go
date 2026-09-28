@@ -14,6 +14,7 @@ type AdminStudentView struct {
 	LastLogin           time.Time  `json:"last_login"`
 	AccountStatus       string     `json:"account_status"`
 	AuthFailedAt        *time.Time `json:"auth_failed_at"`
+	AuthFailureDays     int        `json:"auth_failure_days"`
 	AuthError           string     `json:"auth_error"`
 	StudentBanned       bool       `json:"student_banned"`
 	StudentBanReason    string     `json:"student_ban_reason"`
@@ -51,7 +52,7 @@ func ListStudents(query string, page, pageSize int) ([]AdminStudentView, int64, 
 	}
 	var rows []row
 	selectSQL := `s.stu_id, s.name, s.password, s.last_login,
-		COALESCE(s.auth_status, 'valid') AS account_status, s.auth_failed_at, s.auth_error,
+		COALESCE(s.auth_status, 'valid') AS account_status, s.auth_failed_at, s.auth_failure_days, s.auth_error,
 		(student_bans.stu_id IS NOT NULL) AS student_banned,
 		COALESCE(student_bans.reason, '') AS student_ban_reason,
 		student_bans.expires_at AS student_ban_expires_at,

@@ -282,7 +282,7 @@ async function confirmDelete(task: ViewTask) {
 
 function statusText(task: ViewTask) {
   if (task.StudentBanned) return '学生已封禁 · 暂停执行'
-  if (task.ExecutionBlockedReason) return '暂无可执行绑定 · 暂停执行'
+  if (task.ExecutionBlockedReason) return '执行受限 · 已暂停'
   if (!task.Enabled) return '已暂停'
   if (task.ExecStatus === 'success') return '已成功'
   if (task.ExecStatus === 'failed') return '最近失败'

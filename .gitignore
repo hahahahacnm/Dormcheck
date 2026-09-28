@@ -47,3 +47,6 @@ Thumbs.db
 # Local copies of the former standalone repository metadata
 **/.git-preserved/
 *.zip
+
+# Local migration exports contain credentials and student data
+.migration-private/

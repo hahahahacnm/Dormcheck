@@ -40,12 +40,7 @@ func EnsureStudentCanEnableTasks(stuID string) error {
 		return errors.New("学生账号记录不存在，请重新验证绑定")
 	}
 	if account.AuthStatus == "locked" {
-		return errors.New("学生账号已锁定自动任务，请更新密码并重新验证绑定")
-	}
-	if account.AuthStatus == "invalid" {
-		if account.AuthFailedAt == nil || !time.Now().Before(account.AuthFailedAt.Add(7*24*time.Hour)) {
-			return errors.New("学生账号连续登录失败已达 7 天，任务已锁定；请更新密码并重新验证绑定")
-		}
+		return errors.New("学生账号连续三天认证失败，已停止刷新并锁定全部任务；请更新密码并重新验证绑定")
 	}
 	return nil
 }

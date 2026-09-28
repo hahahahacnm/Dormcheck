@@ -7,6 +7,7 @@ export interface BoundStudent {
   name: string // ✅ 加入学生姓名字段
   accountStatus?: 'valid' | 'invalid' | 'locked'
   authFailedAt?: string | null
+  authFailureDays?: number
   authError?: string
   studentBanned?: boolean
   studentBanReason?: string
@@ -142,6 +143,7 @@ export const student = {
         name: item.Name,
         accountStatus: item.account_status || 'valid',
         authFailedAt: item.auth_failed_at || null,
+        authFailureDays: Number(item.auth_failure_days || 0),
         authError: item.auth_error || '',
         studentBanned: Boolean(item.student_banned),
         studentBanReason: item.student_ban_reason || '',

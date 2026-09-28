@@ -50,14 +50,17 @@ func SaveStudentOrUpdate(student *Student) error {
 		current.AuthFailedAt = nil
 		current.AuthError = ""
 		current.AuthNoticeSentAt = nil
+		current.AuthFailureDays = 0
+		current.AuthLastFailureAt = nil
+		current.AuthNoticeCount = 0
 		if err := tx.Save(&current).Error; err != nil {
 			return err
 		}
-		// Restore only tasks paused by the seven-day credential lock. Activity
+		// Restore only tasks paused by the three-day credential lock. Activity
 		// audit pauses remain in force until the activity itself is healthy.
 		if err := tx.Model(&Task{}).
-			Where("stu_id = ? AND auth_auto_paused = TRUE AND activity_state = ?", student.StuID, "normal").
-			Updates(map[string]interface{}{"enabled": true, "auth_auto_paused": false}).Error; err != nil {
+			Where("stu_id = ? AND (auth_auto_paused = TRUE OR activity_auto_paused = TRUE) AND activity_state = ?", student.StuID, "normal").
+			Updates(map[string]interface{}{"enabled": true, "auth_auto_paused": false, "activity_auto_paused": false}).Error; err != nil {
 			return err
 		}
 		log.Println("更新学生信息并恢复账号锁定任务:", student.StuID)

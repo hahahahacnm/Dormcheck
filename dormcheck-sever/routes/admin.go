@@ -360,7 +360,7 @@ func RegisterAdminRoutes(app *fiber.App) {
 			task.AuthAutoPaused = false
 		}
 		task.Enabled = body.Enabled
-		result := database.DB.Model(&database.Task{}).Where("id = ? AND running_at IS NULL", task.ID).
+		result := database.DB.Model(&database.Task{}).Where("id = ? AND running_at IS NULL AND (? = FALSE OR EXISTS (SELECT 1 FROM students s WHERE s.stu_id = tasks.stu_id AND s.auth_status <> 'locked'))", task.ID, body.Enabled).
 			Updates(map[string]interface{}{"enabled": task.Enabled, "activity_override": task.ActivityOverride, "activity_auto_paused": task.ActivityAutoPaused, "auth_auto_paused": task.AuthAutoPaused})
 		if result.Error != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "更新任务状态失败"})

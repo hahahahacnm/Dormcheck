@@ -41,6 +41,7 @@ type BoundStudentView struct {
 	database.UserStudent
 	AccountStatus       string     `json:"account_status"`
 	AuthFailedAt        *time.Time `json:"auth_failed_at"`
+	AuthFailureDays     int        `json:"auth_failure_days"`
 	AuthError           string     `json:"auth_error"`
 	StudentBanned       bool       `json:"student_banned"`
 	StudentBanReason    string     `json:"student_ban_reason"`
@@ -51,7 +52,7 @@ func GetBoundStudents(userID int) ([]BoundStudentView, error) {
 	var binds []BoundStudentView
 	err := database.DB.Table("user_students").
 		Select(`user_students.*, COALESCE(students.auth_status, 'valid') AS account_status,
-			students.auth_failed_at, students.auth_error,
+			students.auth_failed_at, students.auth_failure_days, students.auth_error,
 			(student_bans.stu_id IS NOT NULL) AS student_banned,
 			student_bans.reason AS student_ban_reason, student_bans.expires_at AS student_ban_expires_at`).
 		Joins("LEFT JOIN students ON students.stu_id = user_students.stu_id").
