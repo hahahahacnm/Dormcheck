@@ -50,3 +50,5 @@ Thumbs.db
 
 # Local migration exports contain credentials and student data
 .migration-private/
+*.sql
+scripts/数据库迁移后检查说明.md
