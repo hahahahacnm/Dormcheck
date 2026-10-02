@@ -120,29 +120,18 @@ func executeSignTask(task *database.Task, manual bool) error {
 			task.LastManualAt, task.LastManualStatus, task.LastManualError = &now, status, errMsg
 		}
 
-		// 成功不通知；仅在最后一次尝试仍失败时通知用户。
-		if !manual && status == "failed" && task.RetryCount >= config.GetInt("task_max_retries", 3)+1 {
-			var emails []string
-			if err := database.DB.Table("users").Distinct("users.email").
-				Joins("JOIN user_students ON user_students.user_id = users.id").
-				Where("user_students.stu_id = ?", task.StuID).Pluck("users.email", &emails).Error; err != nil {
-				log.Printf("查询签到失败通知用户失败: task=%d: %v", task.ID, err)
-			}
-			if task.NotifyEmail != "" {
-				emails = append(emails, task.NotifyEmail)
-			}
-			go func(taskID uint, studentName, activityName, failure string, recipients []string, sentAt time.Time) {
-				seen := map[string]bool{}
-				for _, recipient := range recipients {
-					if recipient == "" || seen[recipient] {
-						continue
-					}
-					seen[recipient] = true
-					if err := utils.SendSignResultEmail(recipient, studentName, activityName, false, failure, sentAt); err != nil {
-						log.Printf("发送签到结果邮件失败: task=%d: %v", taskID, err)
-					}
-				}
-			}(task.ID, task.Name, task.ActivityName, errMsg, emails, now)
+		// 成功：自动和手动都通知。仅自动成功才通知就改成 `status == "success" && !manual`。
+		if status == "success" {
+			sendSignNotice(task, status, manual, "", now)
+		}
+		// 失败：仅在最后一次自动重试仍失败时通知（保持原逻辑）。
+		if status == "failed" && !manual &&
+			task.RetryCount >= config.GetInt("task_max_retries", 3)+1 {
+			sendSignNotice(task, status, manual, errMsg, now)
+		}
+		// 失败：手动执行也通知。不需要就删掉这个分支。
+		if status == "failed" && manual {
+			sendSignNotice(task, status, manual, errMsg, now)
 		}
 
 		if errMsg != "" {
@@ -220,4 +209,39 @@ func executeSignTask(task *database.Task, manual bool) error {
 		}
 		return updateAndReturn("failed", msg)
 	}
+}
+
+// signNoticeRecipients 收集一条任务要通知的邮箱：绑定用户 + 任务自定义通知邮箱。
+func signNoticeRecipients(task *database.Task) []string {
+	var emails []string
+	if err := database.DB.Table("users").Distinct("users.email").
+		Joins("JOIN user_students ON user_students.user_id = users.id").
+		Where("user_students.stu_id = ?", task.StuID).Pluck("users.email", &emails).Error; err != nil {
+		log.Printf("查询签到通知用户失败: task=%d: %v", task.ID, err)
+	}
+	if task.NotifyEmail != "" {
+		emails = append(emails, task.NotifyEmail)
+	}
+	return emails
+}
+
+// sendSignNotice 异步发送签到结果通知，manual 决定邮件里标注“手动执行”还是“自动任务”。
+func sendSignNotice(task *database.Task, status string, manual bool, errMsg string, sentAt time.Time) {
+	recipients := signNoticeRecipients(task)
+	if len(recipients) == 0 {
+		log.Printf("签到通知无收件人，跳过: task=%d", task.ID)
+		return
+	}
+	go func(taskID uint, studentName, activityName, status string, manual bool, failure string, to []string, at time.Time) {
+		seen := map[string]bool{}
+		for _, recipient := range to {
+			if recipient == "" || seen[recipient] {
+				continue
+			}
+			seen[recipient] = true
+			if err := utils.SendSignResultEmail(recipient, studentName, activityName, status == "success", manual, failure, at); err != nil {
+				log.Printf("发送签到结果邮件失败: task=%d: %v", taskID, err)
+			}
+		}
+	}(task.ID, task.Name, task.ActivityName, status, manual, errMsg, recipients, sentAt)
 }
