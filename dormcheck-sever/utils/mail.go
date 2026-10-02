@@ -99,13 +99,25 @@ func SendVerificationCodeEmail(to string, code string) error {
 	return SendMail(to, "邮箱验证", body, "", "")
 }
 
-// SendSignResultEmail 发送签到结果邮件通知
-func SendSignResultEmail(to string, stuName, activityName string, success bool, errorMsg string, sendTime time.Time) error {
+// SendSignResultEmail 发送签到结果邮件通知。
+// manual=true 表示用户手动执行触发，false 表示自动任务触发。
+func SendSignResultEmail(to, stuName, activityName string, success, manual bool, errorMsg string, sendTime time.Time) error {
+	runLabel := "自动任务"
+	if manual {
+		runLabel = "手动执行"
+	}
+
 	var resultMsg string
 	if success {
-		resultMsg = `<p style="color: green;"><strong>✔️ 签到成功</strong></p>`
+		resultMsg = fmt.Sprintf(
+			`<p style="color: green;"><strong>✔️ 签到成功</strong></p><p>触发方式：<strong>%s</strong></p>`,
+			runLabel,
+		)
 	} else {
-		resultMsg = fmt.Sprintf(`<p style="color: red;"><strong>❌ 签到失败</strong></p><p>失败原因：%s</p>`, html.EscapeString(errorMsg))
+		resultMsg = fmt.Sprintf(
+			`<p style="color: red;"><strong>❌ 签到失败</strong></p><p>触发方式：<strong>%s</strong></p><p>失败原因：%s</p>`,
+			runLabel, html.EscapeString(errorMsg),
+		)
 	}
 
 	timeStr := sendTime.Format("2006-01-02 15:04:05")
