@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ type MailTemplateData struct {
 	Body       template.HTML // Only HTML assembled by the mail helpers below.
 	ActionURL  string
 	ActionText string
+	LogoURL    string
 }
 
 // ========== 渲染 HTML 模板 ==========
@@ -36,6 +38,7 @@ func renderTemplate(subject, body, actionURL, actionText string) (string, error)
 		Body:       template.HTML(body),
 		ActionURL:  actionURL,
 		ActionText: actionText,
+		LogoURL:    mailLogoURL(config.Get("frontend_base_url")),
 	}
 
 	var buf bytes.Buffer
@@ -45,6 +48,14 @@ func renderTemplate(subject, body, actionURL, actionText string) (string, error)
 	}
 
 	return buf.String(), nil
+}
+
+func mailLogoURL(base string) string {
+	parsed, err := url.Parse(strings.TrimSpace(base))
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return ""
+	}
+	return (&url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: "/logo.svg"}).String()
 }
 
 // ========== 发送邮件通用方法 ==========
@@ -101,36 +112,39 @@ func SendVerificationCodeEmail(to string, code string) error {
 
 // SendSignResultEmail sends an automatic task result notification.
 func SendSignResultEmail(to, stuName, activityName string, success bool, errorMsg string, sendTime time.Time, attempt, maxAttempts int) error {
-	var resultMsg string
+	subject, htmlBody := signResultContent(stuName, activityName, success, errorMsg, sendTime, attempt, maxAttempts)
+	return SendMail(to, subject, htmlBody, "", "")
+}
+
+func signResultContent(stuName, activityName string, success bool, errorMsg string, sendTime time.Time, attempt, maxAttempts int) (string, string) {
+	var resultMsg, subject string
 	if success {
+		subject = "自动任务成功"
 		resultMsg = fmt.Sprintf(
-			`<p style="color: green;"><strong>✔️ 自动任务执行成功</strong></p><p>执行次数：%d/%d</p>`,
+			`<p style="margin:16px 0 8px;color:#16805d;"><strong>执行成功</strong></p><p style="margin:8px 0;">执行次数：%d/%d</p>`,
 			attempt, maxAttempts,
 		)
 	} else {
+		subject = "自动任务首次失败"
 		stage := "首次执行失败；如果活动仍在有效时段内，系统会按设置继续重试。"
 		if attempt >= maxAttempts {
+			subject = "自动任务重试失败"
 			stage = "本次自动任务已达到尝试次数上限，不会继续重试。"
 		}
 		resultMsg = fmt.Sprintf(
-			`<p style="color: red;"><strong>❌ 自动任务执行失败</strong></p><p>执行次数：%d/%d</p><p>%s</p><p>失败原因：%s</p>`,
+			`<p style="margin:16px 0 8px;color:#ba3247;"><strong>执行失败</strong></p><p style="margin:8px 0;">执行次数：%d/%d</p><p style="margin:8px 0;">%s</p><p style="margin:8px 0;">失败原因：%s</p>`,
 			attempt, maxAttempts, stage, html.EscapeString(errorMsg),
 		)
 	}
 
-	timeStr := sendTime.Format("2006-01-02 15:04:05")
-
-	html := fmt.Sprintf(`
-		<p>您好，以下是 <strong>%s</strong> 的签到任务结果：</p>
-		<p>活动名称：<strong>%s</strong></p>
+	htmlBody := fmt.Sprintf(`
+		<p style="margin:8px 0;">学生：<strong>%s</strong></p>
+		<p style="margin:8px 0;">活动：<strong>%s</strong></p>
 		%s
-		<p>发送时间：%s</p>
-		<p>感谢您使用 DormCheck 自动化托管平台。</p>
-	`, html.EscapeString(stuName), html.EscapeString(activityName), resultMsg, timeStr)
+		<p style="margin:16px 0 0;color:#64748b;font-size:13px;">执行时间：%s</p>
+	`, html.EscapeString(stuName), html.EscapeString(activityName), resultMsg, sendTime.Format("2006-01-02 15:04:05"))
 
-	subject := "自动任务执行结果通知"
-
-	return SendMail(to, subject, html, "", "")
+	return subject, htmlBody
 }
 
 // SendAccountErrorEmail 发送账号异常通知邮件

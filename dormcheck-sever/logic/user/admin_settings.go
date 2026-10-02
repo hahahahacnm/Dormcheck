@@ -34,6 +34,7 @@ var settingKeys = map[string]bool{
 	"smtp_port":                      false,
 	"smtp_from_name":                 false,
 	"smtp_ssl":                       false,
+	"frontend_base_url":              false,
 	"student_limit_user":             false,
 	"student_limit_sponsor":          false,
 	"student_limit_admin":            false,
@@ -170,6 +171,11 @@ func validateSetting(key, value string) error {
 		return fmt.Errorf("设置项 %q 超过允许长度", key)
 	}
 	switch key {
+	case "frontend_base_url":
+		parsed, err := url.Parse(value)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return errors.New("前端地址必须是有效的 HTTPS 地址")
+		}
 	case "captcha_ai_base_url":
 		parsed, err := url.ParseRequestURI(value)
 		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {

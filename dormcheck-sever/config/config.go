@@ -56,6 +56,7 @@ func LoadSettings() error {
 		"smtp_password":                  os.Getenv("SMTP_PASSWORD"),
 		"smtp_from_name":                 envOr("SMTP_FROM_NAME", "DormCheck 系统"),
 		"smtp_ssl":                       envOr("SMTP_SSL", "true"),
+		"frontend_base_url":              envOr("FRONTEND_BASE_URL", "https://dc.kikirepository.cn"),
 		"username_min_length":            "3",
 		"password_min_length":            "6",
 		"email_code_ttl_minutes":         "15",

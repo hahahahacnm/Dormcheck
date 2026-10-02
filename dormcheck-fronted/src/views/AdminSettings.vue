@@ -89,6 +89,10 @@
           <p>注册、密码重置和任务通知共用此 SMTP 配置。</p>
         </div>
         <div class="grid gap-4 md:grid-cols-2">
+          <label class="field md:col-span-2">前端地址（邮件 Logo）
+            <input v-model="values.frontend_base_url" type="url" placeholder="https://dc.kikirepository.cn" required />
+            <span class="text-xs font-normal text-slate-500">邮件会从此地址读取 /logo.svg，请填写用户可访问的 HTTPS 地址。</span>
+          </label>
           <label class="field">SMTP 主机
             <input v-model="values.smtp_host" required />
           </label>
