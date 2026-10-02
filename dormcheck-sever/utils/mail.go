@@ -99,24 +99,22 @@ func SendVerificationCodeEmail(to string, code string) error {
 	return SendMail(to, "邮箱验证", body, "", "")
 }
 
-// SendSignResultEmail 发送签到结果邮件通知。
-// manual=true 表示用户手动执行触发，false 表示自动任务触发。
-func SendSignResultEmail(to, stuName, activityName string, success, manual bool, errorMsg string, sendTime time.Time) error {
-	runLabel := "自动任务"
-	if manual {
-		runLabel = "手动执行"
-	}
-
+// SendSignResultEmail sends an automatic task result notification.
+func SendSignResultEmail(to, stuName, activityName string, success bool, errorMsg string, sendTime time.Time, attempt, maxAttempts int) error {
 	var resultMsg string
 	if success {
 		resultMsg = fmt.Sprintf(
-			`<p style="color: green;"><strong>✔️ 签到成功</strong></p><p>触发方式：<strong>%s</strong></p>`,
-			runLabel,
+			`<p style="color: green;"><strong>✔️ 自动任务执行成功</strong></p><p>执行次数：%d/%d</p>`,
+			attempt, maxAttempts,
 		)
 	} else {
+		stage := "首次执行失败；如果活动仍在有效时段内，系统会按设置继续重试。"
+		if attempt >= maxAttempts {
+			stage = "本次自动任务已达到尝试次数上限，不会继续重试。"
+		}
 		resultMsg = fmt.Sprintf(
-			`<p style="color: red;"><strong>❌ 签到失败</strong></p><p>触发方式：<strong>%s</strong></p><p>失败原因：%s</p>`,
-			runLabel, html.EscapeString(errorMsg),
+			`<p style="color: red;"><strong>❌ 自动任务执行失败</strong></p><p>执行次数：%d/%d</p><p>%s</p><p>失败原因：%s</p>`,
+			attempt, maxAttempts, stage, html.EscapeString(errorMsg),
 		)
 	}
 
@@ -130,7 +128,7 @@ func SendSignResultEmail(to, stuName, activityName string, success, manual bool,
 		<p>感谢您使用 DormCheck 自动化托管平台。</p>
 	`, html.EscapeString(stuName), html.EscapeString(activityName), resultMsg, timeStr)
 
-	subject := "签到结果通知"
+	subject := "自动任务执行结果通知"
 
 	return SendMail(to, subject, html, "", "")
 }

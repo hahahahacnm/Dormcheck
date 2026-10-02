@@ -120,18 +120,9 @@ func executeSignTask(task *database.Task, manual bool) error {
 			task.LastManualAt, task.LastManualStatus, task.LastManualError = &now, status, errMsg
 		}
 
-		// 成功：自动和手动都通知。仅自动成功才通知就改成 `status == "success" && !manual`。
-		if status == "success" {
-			sendSignNotice(task, status, manual, "", now)
-		}
-		// 失败：仅在最后一次自动重试仍失败时通知（保持原逻辑）。
-		if status == "failed" && !manual &&
-			task.RetryCount >= config.GetInt("task_max_retries", 3)+1 {
-			sendSignNotice(task, status, manual, errMsg, now)
-		}
-		// 失败：手动执行也通知。不需要就删掉这个分支。
-		if status == "failed" && manual {
-			sendSignNotice(task, status, manual, errMsg, now)
+		maxAttempts := config.GetInt("task_max_retries", 3) + 1
+		if shouldSendSignNotice(status, manual, task.RetryCount, maxAttempts) {
+			sendSignNotice(task, status, errMsg, now, maxAttempts)
 		}
 
 		if errMsg != "" {
@@ -211,6 +202,19 @@ func executeSignTask(task *database.Task, manual bool) error {
 	}
 }
 
+// Each automatic run has one success notification, or a first and final
+// failure notification. When only one attempt is allowed, those are the same
+// failure event and must produce just one message.
+func shouldSendSignNotice(status string, manual bool, attempt, maxAttempts int) bool {
+	if manual {
+		return false
+	}
+	if status == "success" {
+		return true
+	}
+	return status == "failed" && (attempt == 1 || attempt >= maxAttempts)
+}
+
 // signNoticeRecipients 收集一条任务要通知的邮箱：绑定用户 + 任务自定义通知邮箱。
 func signNoticeRecipients(task *database.Task) []string {
 	var emails []string
@@ -225,23 +229,25 @@ func signNoticeRecipients(task *database.Task) []string {
 	return emails
 }
 
-// sendSignNotice 异步发送签到结果通知，manual 决定邮件里标注“手动执行”还是“自动任务”。
-func sendSignNotice(task *database.Task, status string, manual bool, errMsg string, sentAt time.Time) {
+// sendSignNotice sends an automatic task result after the result was saved.
+func sendSignNotice(task *database.Task, status, errMsg string, sentAt time.Time, maxAttempts int) {
 	recipients := signNoticeRecipients(task)
 	if len(recipients) == 0 {
 		log.Printf("签到通知无收件人，跳过: task=%d", task.ID)
 		return
 	}
-	go func(taskID uint, studentName, activityName, status string, manual bool, failure string, to []string, at time.Time) {
+	go func(taskID uint, studentName, activityName, status, failure string, attempt, maxAttempts int, to []string, at time.Time) {
 		seen := map[string]bool{}
 		for _, recipient := range to {
-			if recipient == "" || seen[recipient] {
+			recipient = strings.TrimSpace(recipient)
+			key := strings.ToLower(recipient)
+			if recipient == "" || seen[key] {
 				continue
 			}
-			seen[recipient] = true
-			if err := utils.SendSignResultEmail(recipient, studentName, activityName, status == "success", manual, failure, at); err != nil {
+			seen[key] = true
+			if err := utils.SendSignResultEmail(recipient, studentName, activityName, status == "success", failure, at, attempt, maxAttempts); err != nil {
 				log.Printf("发送签到结果邮件失败: task=%d: %v", taskID, err)
 			}
 		}
-	}(task.ID, task.Name, task.ActivityName, status, manual, errMsg, recipients, sentAt)
+	}(task.ID, task.Name, task.ActivityName, status, errMsg, task.RetryCount, maxAttempts, recipients, sentAt)
 }
