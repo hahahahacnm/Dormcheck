@@ -215,18 +215,12 @@ func shouldSendSignNotice(status string, manual bool, attempt, maxAttempts int) 
 	return status == "failed" && (attempt == 1 || attempt >= maxAttempts)
 }
 
-// signNoticeRecipients 收集一条任务要通知的邮箱：绑定用户 + 任务自定义通知邮箱。
+// signNoticeRecipients returns only the notification address explicitly set on the task.
 func signNoticeRecipients(task *database.Task) []string {
-	var emails []string
-	if err := database.DB.Table("users").Distinct("users.email").
-		Joins("JOIN user_students ON user_students.user_id = users.id").
-		Where("user_students.stu_id = ?", task.StuID).Pluck("users.email", &emails).Error; err != nil {
-		log.Printf("查询签到通知用户失败: task=%d: %v", task.ID, err)
+	if email := strings.TrimSpace(task.NotifyEmail); email != "" {
+		return []string{email}
 	}
-	if task.NotifyEmail != "" {
-		emails = append(emails, task.NotifyEmail)
-	}
-	return emails
+	return nil
 }
 
 // sendSignNotice sends an automatic task result after the result was saved.
@@ -236,7 +230,7 @@ func sendSignNotice(task *database.Task, status, errMsg string, sentAt time.Time
 		log.Printf("签到通知无收件人，跳过: task=%d", task.ID)
 		return
 	}
-	go func(taskID uint, studentName, activityName, status, failure string, attempt, maxAttempts int, to []string, at time.Time) {
+	go func(taskID uint, studentName, studentID, activityName, status, failure string, attempt, maxAttempts int, to []string, at time.Time) {
 		seen := map[string]bool{}
 		for _, recipient := range to {
 			recipient = strings.TrimSpace(recipient)
@@ -245,9 +239,9 @@ func sendSignNotice(task *database.Task, status, errMsg string, sentAt time.Time
 				continue
 			}
 			seen[key] = true
-			if err := utils.SendSignResultEmail(recipient, studentName, activityName, status == "success", failure, at, attempt, maxAttempts); err != nil {
+			if err := utils.SendSignResultEmail(recipient, studentName, studentID, activityName, status == "success", failure, at, attempt, maxAttempts); err != nil {
 				log.Printf("发送签到结果邮件失败: task=%d: %v", taskID, err)
 			}
 		}
-	}(task.ID, task.Name, task.ActivityName, status, errMsg, task.RetryCount, maxAttempts, recipients, sentAt)
+	}(task.ID, task.Name, task.StuID, task.ActivityName, status, errMsg, task.RetryCount, maxAttempts, recipients, sentAt)
 }

@@ -111,12 +111,12 @@ func SendVerificationCodeEmail(to string, code string) error {
 }
 
 // SendSignResultEmail sends an automatic task result notification.
-func SendSignResultEmail(to, stuName, activityName string, success bool, errorMsg string, sendTime time.Time, attempt, maxAttempts int) error {
-	subject, htmlBody := signResultContent(stuName, activityName, success, errorMsg, sendTime, attempt, maxAttempts)
+func SendSignResultEmail(to, stuName, stuID, activityName string, success bool, errorMsg string, sendTime time.Time, attempt, maxAttempts int) error {
+	subject, htmlBody := signResultContent(stuName, stuID, activityName, success, errorMsg, sendTime, attempt, maxAttempts)
 	return SendMail(to, subject, htmlBody, "", "")
 }
 
-func signResultContent(stuName, activityName string, success bool, errorMsg string, sendTime time.Time, attempt, maxAttempts int) (string, string) {
+func signResultContent(stuName, stuID, activityName string, success bool, errorMsg string, sendTime time.Time, attempt, maxAttempts int) (string, string) {
 	var resultMsg, subject string
 	if success {
 		subject = "自动任务成功"
@@ -139,10 +139,11 @@ func signResultContent(stuName, activityName string, success bool, errorMsg stri
 
 	htmlBody := fmt.Sprintf(`
 		<p style="margin:8px 0;">学生：<strong>%s</strong></p>
+		<p style="margin:8px 0;">学号：<strong>%s</strong></p>
 		<p style="margin:8px 0;">活动：<strong>%s</strong></p>
 		%s
 		<p style="margin:16px 0 0;color:#64748b;font-size:13px;">执行时间：%s</p>
-	`, html.EscapeString(stuName), html.EscapeString(activityName), resultMsg, sendTime.Format("2006-01-02 15:04:05"))
+	`, html.EscapeString(stuName), html.EscapeString(stuID), html.EscapeString(activityName), resultMsg, sendTime.Format("2006-01-02 15:04:05"))
 
 	return subject, htmlBody
 }
